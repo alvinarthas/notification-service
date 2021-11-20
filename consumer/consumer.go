@@ -36,36 +36,21 @@ func main() {
 	)
 	failOnError(err, "Failed to declare an exchange")
 
-	// Declare Queue for SMS
-	qs, err := ch.QueueDeclare(
-		"sms-queue", // name
-		false,       // durable
-		false,       // delete when unused
-		true,        // exclusive
-		false,       // no-wait
-		nil,         // arguments
-	)
-	failOnError(err, "Failed to declare a queue for sms")
+	smsConsume := consumeSMS(ch)
+	mailConsume := consumeMail(ch)
 
-	// Bind the Queue with the Exchange
-	err = ch.QueueBind(
-		qs.Name,        // queue name
-		"sms",          // routing key
-		"notification", // exchange
-		false,
-		nil)
-	failOnError(err, "Failed to bind a sms queue")
+	// Send the information
+	forever := make(chan bool)
 
-	smsConsume, err := ch.Consume(
-		qs.Name, // queue
-		"",      // consumer
-		true,    // auto ack
-		false,   // exclusive
-		false,   // no local
-		false,   // no wait
-		nil,     // args
-	)
-	failOnError(err, "Failed to register a sms consumer")
+	go sendMail(mailConsume)
+
+	go sendSMS(smsConsume)
+
+	log.Printf(" [*] Waiting for message. To exit press CTRL+C")
+	<-forever
+}
+
+func consumeMail(ch *amqp.Channel) <-chan amqp.Delivery {
 
 	// Declare Queue for Mail
 	qm, err := ch.QueueDeclare(
@@ -99,24 +84,55 @@ func main() {
 	)
 	failOnError(err, "Failed to register a mail consumer")
 
-	// Send the information
-	forever := make(chan bool)
+	return mailConsume
+}
 
-	go func() {
+func consumeSMS(ch *amqp.Channel) <-chan amqp.Delivery {
 
-		for sm := range smsConsume {
-			log.Printf(" [x] - SMS Consume - %s", sm.Body)
-		}
+	// Declare Queue for SMS
+	qs, err := ch.QueueDeclare(
+		"sms-queue", // name
+		false,       // durable
+		false,       // delete when unused
+		true,        // exclusive
+		false,       // no-wait
+		nil,         // arguments
+	)
+	failOnError(err, "Failed to declare a queue for sms")
 
-	}()
+	// Bind the Queue with the Exchange
+	err = ch.QueueBind(
+		qs.Name,        // queue name
+		"sms",          // routing key
+		"notification", // exchange
+		false,
+		nil)
+	failOnError(err, "Failed to bind a sms queue")
 
-	go func() {
+	smsConsume, err := ch.Consume(
+		qs.Name, // queue
+		"",      // consumer
+		true,    // auto ack
+		false,   // exclusive
+		false,   // no local
+		false,   // no wait
+		nil,     // args
+	)
+	failOnError(err, "Failed to register a sms consumer")
 
-		for mm := range mailConsume {
-			log.Printf(" [x] - Mail Consume - %s", mm.Body)
-		}
-	}()
+	return smsConsume
+}
 
-	log.Printf(" [*] Waiting for logs. To exit press CTRL+C")
-	<-forever
+func sendMail(mailConsume <-chan amqp.Delivery) {
+
+	for mm := range mailConsume {
+		log.Printf(" [x] - Mail Consume - %s", mm.Body)
+	}
+}
+
+func sendSMS(smsConsume <-chan amqp.Delivery) {
+
+	for sm := range smsConsume {
+		log.Printf(" [x] - SMS Consume - %s", sm.Body)
+	}
 }
