@@ -36,45 +36,84 @@ func main() {
 	)
 	failOnError(err, "Failed to declare an exchange")
 
-	// Declare the Queue
-	q, err := ch.QueueDeclare(
-		"",    // name
-		false, // durable
-		false, // delete when unused
-		true,  // exclusive
-		false, // no-wait
-		nil,   // arguments
+	// Declare Queue for SMS
+	qs, err := ch.QueueDeclare(
+		"sms-queue", // name
+		false,       // durable
+		false,       // delete when unused
+		true,        // exclusive
+		false,       // no-wait
+		nil,         // arguments
 	)
-	failOnError(err, "Failed to declare a queue")
+	failOnError(err, "Failed to declare a queue for sms")
 
 	// Bind the Queue with the Exchange
 	err = ch.QueueBind(
-		q.Name,         // queue name
+		qs.Name,        // queue name
+		"sms",          // routing key
+		"notification", // exchange
+		false,
+		nil)
+	failOnError(err, "Failed to bind a sms queue")
+
+	smsConsume, err := ch.Consume(
+		qs.Name, // queue
+		"",      // consumer
+		true,    // auto ack
+		false,   // exclusive
+		false,   // no local
+		false,   // no wait
+		nil,     // args
+	)
+	failOnError(err, "Failed to register a sms consumer")
+
+	// Declare Queue for Mail
+	qm, err := ch.QueueDeclare(
+		"mail-queue", // name
+		false,        // durable
+		false,        // delete when unused
+		true,         // exclusive
+		false,        // no-wait
+		nil,          // arguments
+	)
+	failOnError(err, "Failed to declare a queue for mail")
+
+	// Bind the Queue with the Exchange
+	err = ch.QueueBind(
+		qm.Name,        // queue name
 		"email",        // routing key
 		"notification", // exchange
 		false,
 		nil)
-	failOnError(err, "Failed to bind a queue")
+	failOnError(err, "Failed to bind a mail queue")
 
 	// Consume from Queue
-	msgs, err := ch.Consume(
-		q.Name, // queue
-		"",     // consumer
-		true,   // auto ack
-		false,  // exclusive
-		false,  // no local
-		false,  // no wait
-		nil,    // args
+	mailConsume, err := ch.Consume(
+		qm.Name, // queue
+		"",      // consumer
+		true,    // auto ack
+		false,   // exclusive
+		false,   // no local
+		false,   // no wait
+		nil,     // args
 	)
-	failOnError(err, "Failed to register a consumer")
+	failOnError(err, "Failed to register a mail consumer")
 
 	// Send the information
 	forever := make(chan bool)
 
 	go func() {
 
-		for d := range msgs {
-			log.Printf(" [x] %s", d.Body)
+		for sm := range smsConsume {
+			log.Printf(" [x] - SMS Consume - %s", sm.Body)
+		}
+
+	}()
+
+	go func() {
+
+		for mm := range mailConsume {
+			log.Printf(" [x] - Mail Consume - %s", mm.Body)
 		}
 	}()
 
