@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 
 	"github.com/streadway/amqp"
@@ -10,6 +11,19 @@ func failOnError(err error, msg string) {
 	if err != nil {
 		log.Fatalf("%s: %s", msg, err)
 	}
+}
+
+type Mail struct {
+	Receiver []string
+	Sender   string
+	Subject  string
+	MailBody string
+}
+
+type SMS struct {
+	Receiver string
+	Sender   string
+	Message  string
 }
 
 func main() {
@@ -125,14 +139,37 @@ func consumeSMS(ch *amqp.Channel) <-chan amqp.Delivery {
 
 func sendMail(mailConsume <-chan amqp.Delivery) {
 
+	mailPayload := Mail{}
+
 	for mm := range mailConsume {
-		log.Printf(" [x] - Mail Consume - %s", mm.Body)
+
+		err := json.Unmarshal(mm.Body, &mailPayload)
+		failOnError(err, "Failed to Read Message")
+
+		log.Printf(`
+			Sending Email
+			To : %s
+			From: %s
+			Subject: %s
+			Message: %s
+		`, mailPayload.Receiver, mailPayload.Sender, mailPayload.Subject, mailPayload.MailBody)
 	}
 }
 
 func sendSMS(smsConsume <-chan amqp.Delivery) {
 
+	smsPayload := SMS{}
+
 	for sm := range smsConsume {
-		log.Printf(" [x] - SMS Consume - %s", sm.Body)
+
+		err := json.Unmarshal(sm.Body, &smsPayload)
+		failOnError(err, "Failed to Read Message")
+
+		log.Printf(`
+			Sending SMS
+			To : %s
+			From: %s
+			Message: %s
+		`, smsPayload.Receiver, smsPayload.Sender, smsPayload.Message)
 	}
 }
